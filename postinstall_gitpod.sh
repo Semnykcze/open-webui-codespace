@@ -4,23 +4,26 @@ set -e
 
 
 # Load configuration from config.ini
-source <(grep -v '^#' config.ini | sed 's/\$(\(.*\))/$(\1)/g')
+source <(grep -v '^#' config_gitpod.ini | sed 's/\$(\(.*\))/$(\1)/g')
 
 
 log() {
   STEP_NUM=$1
   TEXT=$2
-  echo -e "\033[1;34m[customChat Codespaces - ${STEP_NUM}/7]\033[0m $TEXT"
+  echo -e "\033[1;34m[Gitpod Setup - ${STEP_NUM}/7]\033[0m $TEXT"
 }
 
 getPath() {
-  echo "Bude nainstalovano do : $ROOT_DIR"
+  echo "Bude nainstalovano do : $GITPOD_REPO_ROOT"
 }
 
+# Set ROOT_DIR to Gitpod workspace root
+ROOT_DIR="$GITPOD_REPO_ROOT"
+
 # Prompt user to choose installation type
-read -p "❓ Chceš instalovat na Codespaces nebo lokálně? [ 1 - codespaces | 2 - local]: " INSTALL_TYPE
+read -p "❓ Chceš instalovat na Gitpod nebo lokálně? [ 1 - gitpod | 2 - local]: " INSTALL_TYPE
 if [[ "$INSTALL_TYPE" == "1" ]]; then
-  log 0 "Instalace na Codespaces vybrána. $(getPath)"
+  log 0 "Instalace na Gitpod vybrána. $(getPath)"
 elif [[ "$INSTALL_TYPE" == "2" ]]; then
   log 0 "Lokální instalace vybrána."
 else
@@ -91,6 +94,7 @@ else
 fi
 
 # 2. PATH a pip
+# Adjust paths for Gitpod
 if ! grep -q "$PYTHON_PREFIX/bin" ~/.bashrc; then
   echo "export PATH=$PYTHON_PREFIX/bin:\$PATH" >> ~/.bashrc
   log 2 "✅ Python $PYTHON_VERSION přidán do PATH"
@@ -174,4 +178,4 @@ log 7 "Spouštím Open WebUI..."
 nohup $PYTHON_BIN -m open_webui.serve > "$ROOT_DIR/webui-server.log" 2>&1 &
 
 log 7 "✅ Open WebUI běží na http://localhost:8080"
-echo "[customChat Codespaces - 7/7] Přístup: otevři přesměrovaný port 8080 v Codespaces nebo použij VSCode port forwarding."
+echo "[Gitpod Setup - 7/7] Přístup: otevři přesměrovaný port 8080 v Gitpod nebo použij VSCode port forwarding."
