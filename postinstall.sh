@@ -115,7 +115,7 @@ $PYTHON_BIN -m pip install llama-cpp-python --target="$LLAMA_CPP_DIR"
 
 # Add llama-cpp-python to PATH
 if ! grep -q "$LLAMA_CPP_DIR" ~/.bashrc; then
-  echo "export PATH=$LLAMA_CPP_DIR:":\$PATH" >> ~/.bashrc
+  echo "export PATH=$LLAMA_CPP_DIR:\$PATH" >> ~/.bashrc
   log 3 "✅ llama-cpp-python přidán do PATH."
 fi
 
@@ -158,6 +158,7 @@ log 5 "✅ LLM server běží na http://localhost:8000/v1"
 
 # 6. Instalace a konfigurace Open WebUI
 log 6 "Instaluji Open WebUI..."
+WEBUI_DIR="$ROOT_DIR/open-webui"
 mkdir -p "$WEBUI_DIR"
 cd "$WEBUI_DIR"
 $PYTHON_BIN -m pip install open-webui
@@ -168,6 +169,7 @@ LLM_API_BASE_URL=http://localhost:8000/v1
 EOF
 
 log 6 "✅ .env vytvořen v $WEBUI_DIR/.env"
+log 6 "✅ Open WebUI nainstalován do $WEBUI_DIR."
 
 # 7. Spuštění Open WebUI
 log 7 "Spouštím Open WebUI..."
