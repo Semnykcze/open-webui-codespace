@@ -14,7 +14,13 @@ MODEL_NAME="tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
 WEBUI_DIR="$ROOT_DIR/open-webui"
 
 log() {
-  echo "[customChat Codespaces - $1/7] $2"
+  STEP_NUM=$1
+  TEXT=$2
+  echo -e "\033[1;34m[customChat Codespaces - ${STEP_NUM}/7]\033[0m $TEXT"
+}
+
+getPath() {
+  echo "Bude nainstalovano do : $ROOT_DIR"
 }
 
 # === SYSTEM CHECK ===
@@ -67,6 +73,10 @@ export PATH=$PYTHON_PREFIX/bin:$PATH
 
 log 2 "Použitý Python: $($PYTHON_BIN --version)"
 $PYTHON_BIN -m pip install --upgrade pip
+
+if [ ! -x "$PYTHON_BIN" ]; then
+  error_exit "Python nebyl správně nainstalován nebo není na $PYTHON_BIN"
+fi
 
 # 3. llama-cpp-python
 log 3 "Instaluji llama-cpp-python..."
