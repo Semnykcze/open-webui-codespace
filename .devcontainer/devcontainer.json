@@ -1,17 +1,38 @@
+// devcontainer.json
 {
-  "name": "open-webui",
-  "image": "mcr.microsoft.com/vscode/devcontainers/base:debian",
+  "$schema": "https://raw.githubusercontent.com/devcontainers/spec/main/schema/devcontainer.json",
+  "name": "open-webui-codespace",
   "build": {
+    "context": ".",
     "dockerfile": "Dockerfile"
   },
   "forwardPorts": [3000, 8080, 8000],
   "postCreateCommand": "bash /scripts/init.sh",
   "settings": {
     "terminal.integrated.shell.linux": "/bin/bash"
-    },
+  },
   "customizations": {
     "vscode": {
-      "extensions": ["ms-python.python", "esbenp.prettier-vscode"]
+      "extensions": [
+        "ms-python.python",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  },
+  "features": {
+    "ghcr.io/rocker-org/devcontainer-features/apt-packages:1": {
+      "packages": [
+        "curl",
+        "git",
+        "build-essential",
+        "ffmpeg",
+        "libopenblas-dev",
+        "libsndfile1"
+      ]
+    },
+    "ghcr.io/devcontainers-extra/features/curl-apt-get:1": {},
+    "ghcr.io/davzucky/devcontainers-features-wolfi/python:1": {
+      "version": "3.11"
     }
   }
 }
