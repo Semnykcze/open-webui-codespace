@@ -7,24 +7,41 @@ PYTHON_VERSION=3.11.9
 PYTHON_PREFIX=/usr/local/python/$PYTHON_VERSION
 PYTHON_BIN=$PYTHON_PREFIX/bin/python3.11
 NUM_CORES=$(nproc)
+ROOT_DIR="$(pwd)"
+MODEL_DIR="$ROOT_DIR/models"
+MODEL_URL="https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+MODEL_NAME="tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+WEBUI_DIR="$ROOT_DIR/open-webui"
 
-echo "🔧 [1/7] Instalace Ollama..."
-curl -fsSL https://ollama.com/install.sh | sh
-echo "✅ Ollama nainstalována."
+log() {
+  echo "[customChat Codespaces - $1/7] $2"
+}
 
-echo "🔧 [2/7] Nastavení OLLAMA_FORCE_CPU=true..."
-export OLLAMA_FORCE_CPU=true
+# === SYSTEM CHECK ===
+FREE_SPACE_GB=$(df -BG --output=avail "$ROOT_DIR" | tail -1 | tr -dc '0-9')
+REQUIRED_SPACE_GB=4
 
-if ! grep -q "OLLAMA_FORCE_CPU=true" ~/.bashrc; then
-  echo "export OLLAMA_FORCE_CPU=true" >> ~/.bashrc
-  echo "✅ Přidáno do ~/.bashrc"
+echo ""
+echo "⚠️  Instalace zabere přibližně ${REQUIRED_SPACE_GB} GB místa (Python, model, WebUI)."
+echo "📦 Dostupné místo: ${FREE_SPACE_GB} GB v $(pwd)"
+echo ""
+
+if [ "$FREE_SPACE_GB" -lt "$REQUIRED_SPACE_GB" ]; then
+  echo "❌ Nedostatek místa: potřebuješ alespoň ${REQUIRED_SPACE_GB} GB."
+  exit 1
 fi
 
-# Kontrola existence Pythonu
+read -p "❓ Chceš pokračovat? [y/N]: " CONFIRM
+if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
+  echo "❌ Instalace zrušena uživatelem."
+  exit 0
+fi
+
+# 1. Instalace Pythonu
 if [ -f "$PYTHON_BIN" ]; then
-  echo "✅ [3/7] Python $PYTHON_VERSION je již nainstalovaný."
+  log 1 "Python $PYTHON_VERSION je již nainstalovaný."
 else
-  echo "🔧 [3/7] Instalace Python $PYTHON_VERSION..."
+  log 1 "Instaluji Python $PYTHON_VERSION..."
   sudo apt update
   sudo apt install -y build-essential libssl-dev zlib1g-dev libncurses5-dev \
     libsqlite3-dev libreadline-dev libbz2-dev libffi-dev curl liblzma-dev tk-dev wget
@@ -37,49 +54,55 @@ else
   ./configure --prefix=$PYTHON_PREFIX --enable-optimizations --with-ensurepip=install
   make -j$NUM_CORES
   sudo make install
+  log 1 "✅ Python $PYTHON_VERSION nainstalován."
 fi
 
-# Přidání do PATH
+# 2. PATH a pip
 if ! grep -q "$PYTHON_PREFIX/bin" ~/.bashrc; then
   echo "export PATH=$PYTHON_PREFIX/bin:\$PATH" >> ~/.bashrc
-  echo "✅ Python $PYTHON_VERSION přidán do PATH"
+  log 2 "✅ Python $PYTHON_VERSION přidán do PATH"
 fi
 
 export PATH=$PYTHON_PREFIX/bin:$PATH
 
-echo "🐍 Použitý Python:"
-$PYTHON_BIN --version
+log 2 "Použitý Python: $($PYTHON_BIN --version)"
+$PYTHON_BIN -m pip install --upgrade pip
 
-echo "📦 [4/7] Instalace uv Runtime Manageru..."
-curl -Ls https://astral.sh/uv/install.sh | bash
+# 3. llama-cpp-python
+log 3 "Instaluji llama-cpp-python..."
+$PYTHON_BIN -m pip install llama-cpp-python
 
-if [ -f "$HOME/.cargo/bin/uv" ]; then
-  if ! grep -q "export PATH=\$HOME/.cargo/bin:\$PATH" ~/.bashrc; then
-    echo "export PATH=\$HOME/.cargo/bin:\$PATH" >> ~/.bashrc
-    echo "✅ Přidáno uv do PATH v ~/.bashrc"
-  fi
-fi
+# 4. Stáhnutí modelu
+log 4 "Stahuji TinyLlama model (~400MB)..."
+mkdir -p "$MODEL_DIR"
+curl -L "$MODEL_URL" -o "$MODEL_DIR/$MODEL_NAME"
+log 4 "✅ Model uložen do $MODEL_DIR/$MODEL_NAME"
 
-echo "📥 [5/7] Instalace Open WebUI (pokud Python $PYTHON_VERSION existuje)..."
-if [ -x "$PYTHON_BIN" ]; then
-  $PYTHON_BIN -m pip install --upgrade pip
-  $PYTHON_BIN -m pip install open-webui
-  echo "✅ open-webui nainstalováno pro Python $PYTHON_VERSION"
-else
-  echo "❌ Python $PYTHON_VERSION není dostupný – přeskočeno pip install open-webui"
-fi
+# 5. Spuštění LLM serveru
+log 5 "Spouštím llama-cpp-python server..."
+nohup $PYTHON_BIN -m llama_cpp.server \
+  --model "$MODEL_DIR/$MODEL_NAME" \
+  --host 0.0.0.0 \
+  --port 8000 > "$ROOT_DIR/llama-server.log" 2>&1 &
 
-echo "🔧 [6/7] Aktivace změn..."
-source ~/.bashrc || echo "ℹ️ Spusť 'source ~/.bashrc' ručně, pokud je potřeba"
+log 5 "✅ LLM server běží na http://localhost:8000/v1"
 
-echo "🚀 [7/7] Hotovo! Můžeš spustit Open WebUI následovně:"
-echo ""
-echo "Once uv is installed, running Open WebUI is a breeze."
-echo "Use the command below, ensuring to set the DATA_DIR environment variable to avoid data loss."
-echo ""
-echo "macOS/Linux:"
-echo "  DATA_DIR=\$HOME/.open-webui uvx --python 3.11 open-webui@latest serve"
-echo ""
-echo "📁 Ujisti se, že adresář ~/.open-webui existuje a má správná práva."
-echo ""
-echo "🎉 Můžeš také spustit Ollama s CPU: ollama run mistral"
+# 6. Instalace a konfigurace Open WebUI
+log 6 "Instaluji Open WebUI..."
+mkdir -p "$WEBUI_DIR"
+cd "$WEBUI_DIR"
+$PYTHON_BIN -m pip install open-webui
+
+cat > .env <<EOF
+LLM_PROVIDER=llamacpp
+LLM_API_BASE_URL=http://localhost:8000/v1
+EOF
+
+log 6 "✅ .env vytvořen v $WEBUI_DIR/.env"
+
+# 7. Spuštění Open WebUI
+log 7 "Spouštím Open WebUI..."
+nohup $PYTHON_BIN -m open_webui.serve > "$ROOT_DIR/webui-server.log" 2>&1 &
+
+log 7 "✅ Open WebUI běží na http://localhost:8080"
+echo "[customChat Codespaces - 7/7] Přístup: otevři přesměrovaný port 8080 v Codespaces nebo použij VSCode port forwarding."
