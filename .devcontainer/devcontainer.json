@@ -4,7 +4,6 @@
     "dockerfile": "Dockerfile"
   },
   "forwardPorts": [7860],
-  "workspaceFolder": "/workspace/webui",
   "extensions": [
     "ms-python.python"
   ],
