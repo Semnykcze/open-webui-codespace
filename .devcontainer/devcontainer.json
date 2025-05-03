@@ -1,6 +1,6 @@
 {
   "name": "open-webui",
-  "image": "mcr.microsoft.com/devcontainers/base:debian",
+  "image": "mcr.microsoft.com/vscode/devcontainers/base:debian",
   "build": {
     "dockerfile": "Dockerfile"
   },
