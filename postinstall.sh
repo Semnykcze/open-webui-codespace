@@ -163,6 +163,24 @@ mkdir -p "$WEBUI_DIR"
 cd "$WEBUI_DIR"
 $PYTHON_BIN -m pip install open-webui
 
+# Kontrola, zda je balíček již nainstalován
+if ! $PYTHON_BIN -m pip show open-webui > /dev/null 2>&1; then
+  log 6 "Instaluji Open WebUI do $WEBUI_DIR..."
+  $PYTHON_BIN -m pip install open-webui --target="$WEBUI_DIR"
+else
+  log 6 "✅ Open WebUI je již nainstalován v $WEBUI_DIR."
+fi
+
+# Přidání složky do PYTHONPATH
+export PYTHONPATH="$WEBUI_DIR:$PYTHONPATH"
+
+# Kontrola, zda modul open_webui.serve existuje
+if ! $PYTHON_BIN -c "import open_webui.serve" > /dev/null 2>&1; then
+  log 6 "❌ Modul open_webui.serve nebyl nalezen. Opětovná instalace Open WebUI do $WEBUI_DIR..."
+  $PYTHON_BIN -m pip install --force-reinstall open-webui --target="$WEBUI_DIR"
+  log 6 "✅ Open WebUI byl znovu nainstalován do $WEBUI_DIR."
+fi
+
 cat > .env <<EOF
 LLM_PROVIDER=llamacpp
 LLM_API_BASE_URL=http://localhost:8000/v1
