@@ -1,16 +1,15 @@
-FROM debian:bookworm
+# založeno na oficiálním Python obrazu
+FROM python:3.10-slim
 
-ENV DEBIAN_FRONTEND=noninteractive
+# systémové závislosti (např. git, curl)
+RUN apt-get update && apt-get install -y git curl && rm -rf /var/lib/apt/lists/*
 
-RUN apt update && apt install -y \
-  git curl build-essential python3 python3-venv python3-pip \
-  nodejs npm ffmpeg libopenblas-dev libsndfile1 cmake
+# nastavení pracovního adresáře
+WORKDIR /workspace
 
-# Install llama.cpp
-RUN git clone https://github.com/ggerganov/llama.cpp /llama.cpp && \
-  cd /llama.cpp && make server
+# nainstaluj text-generation-webui (nebo jiný UI)
+RUN git clone https://github.com/oobabooga/text-generation-webui.git /workspace/webui
 
-# Install Open WebUI
-RUN git clone https://github.com/open-webui/open-webui /webui
-
-WORKDIR /webui
+# nainstaluj Python závislosti
+WORKDIR /workspace/webui
+RUN pip install --upgrade pip && pip install -r requirements.txt
