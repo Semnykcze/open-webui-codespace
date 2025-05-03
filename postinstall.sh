@@ -2,16 +2,10 @@
 
 set -e
 
-# === CONFIG ===
-PYTHON_VERSION=3.11.9
-PYTHON_PREFIX=/usr/local/python/$PYTHON_VERSION
-PYTHON_BIN=$PYTHON_PREFIX/bin/python3.11
-NUM_CORES=$(nproc)
-ROOT_DIR="$(pwd)"
-MODEL_DIR="$ROOT_DIR/models"
-MODEL_URL="https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
-MODEL_NAME="tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
-WEBUI_DIR="$ROOT_DIR/open-webui"
+
+# Load configuration from config.ini
+source <(grep -v '^#' config.ini | sed 's/\$(\(.*\))/$(\1)/g')
+
 
 log() {
   STEP_NUM=$1
@@ -22,6 +16,17 @@ log() {
 getPath() {
   echo "Bude nainstalovano do : $ROOT_DIR"
 }
+
+# Prompt user to choose installation type
+read -p "❓ Chceš instalovat na Codespaces nebo lokálně? [codespaces/local]: " INSTALL_TYPE
+if [[ "$INSTALL_TYPE" == "codespaces" ]]; then
+  log 0 "Instalace na Codespaces vybrána. $(getPath)"
+elif [[ "$INSTALL_TYPE" == "local" ]]; then
+  log 0 "Lokální instalace vybrána."
+else
+  echo "❌ Neplatná volba. Prosím spusť skript znovu a vyber správnou možnost."
+  exit 1
+fi
 
 # === SYSTEM CHECK ===
 FREE_SPACE_GB=$(df -BG --output=avail "$ROOT_DIR" | tail -1 | tr -dc '0-9')
@@ -44,23 +49,45 @@ if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
 fi
 
 # 1. Instalace Pythonu
-if [ -f "$PYTHON_BIN" ]; then
-  log 1 "Python $PYTHON_VERSION je již nainstalovaný."
-else
-  log 1 "Instaluji Python $PYTHON_VERSION..."
+BUILD_REQUIRED_SPACE_GB=2
+DOWNLOAD_REQUIRED_SPACE_GB=1
+
+read -p "❓ Chceš Python sestavit ze zdrojového kódu nebo stáhnout a nainstalovat? [ 1 - build | 2 - download]: " PYTHON_INSTALL_METHOD
+if [[ "$PYTHON_INSTALL_METHOD" == "build" ]]; then
+  if [ "$FREE_SPACE_GB" -lt "$BUILD_REQUIRED_SPACE_GB" ]; then
+    echo "❌ Nedostatek místa: potřebuješ alespoň ${BUILD_REQUIRED_SPACE_GB} GB pro sestavení Pythonu."
+    exit 1
+  fi
+  if [ -f "$PYTHON_BIN" ]; then
+    log 1 "Python $PYTHON_VERSION je již nainstalovaný."
+  else
+    log 1 "Sestavuji Python $PYTHON_VERSION..."
+    sudo apt update
+    sudo apt install -y build-essential libssl-dev zlib1g-dev libncurses5-dev \
+      libsqlite3-dev libreadline-dev libbz2-dev libffi-dev curl liblzma-dev tk-dev wget
+
+    cd /tmp
+    wget https://www.python.org/ftp/python/$PYTHON_VERSION/Python-$PYTHON_VERSION.tgz
+    tar -xzf Python-$PYTHON_VERSION.tgz
+    cd Python-$PYTHON_VERSION
+
+    ./configure --prefix=$PYTHON_PREFIX --enable-optimizations --with-ensurepip=install
+    make -j$NUM_CORES
+    sudo make install
+    log 1 "✅ Python $PYTHON_VERSION sestaven a nainstalován."
+  fi
+elif [[ "$PYTHON_INSTALL_METHOD" == "download" ]]; then
+  if [ "$FREE_SPACE_GB" -lt "$DOWNLOAD_REQUIRED_SPACE_GB" ]; then
+    echo "❌ Nedostatek místa: potřebuješ alespoň ${DOWNLOAD_REQUIRED_SPACE_GB} GB pro stažení Pythonu."
+    exit 1
+  fi
+  log 1 "Stahuji a instaluji Python $PYTHON_VERSION..."
   sudo apt update
-  sudo apt install -y build-essential libssl-dev zlib1g-dev libncurses5-dev \
-    libsqlite3-dev libreadline-dev libbz2-dev libffi-dev curl liblzma-dev tk-dev wget
-
-  cd /tmp
-  wget https://www.python.org/ftp/python/$PYTHON_VERSION/Python-$PYTHON_VERSION.tgz
-  tar -xzf Python-$PYTHON_VERSION.tgz
-  cd Python-$PYTHON_VERSION
-
-  ./configure --prefix=$PYTHON_PREFIX --enable-optimizations --with-ensurepip=install
-  make -j$NUM_CORES
-  sudo make install
-  log 1 "✅ Python $PYTHON_VERSION nainstalován."
+  sudo apt install -y python3 python3-pip
+  log 1 "✅ Python $PYTHON_VERSION stažen a nainstalován."
+else
+  echo "❌ Neplatná volba. Prosím spusť skript znovu a vyber správnou možnost."
+  exit 1
 fi
 
 # 2. PATH a pip
@@ -80,7 +107,19 @@ fi
 
 # 3. llama-cpp-python
 log 3 "Instaluji llama-cpp-python..."
-$PYTHON_BIN -m pip install llama-cpp-python
+LLAMA_CPP_DIR="$ROOT_DIR/llama-cpp-python"
+mkdir -p "$LLAMA_CPP_DIR"
+cd "$LLAMA_CPP_DIR"
+$PYTHON_BIN -m pip install llama-cpp-python --target="$LLAMA_CPP_DIR"
+
+# Add llama-cpp-python to PATH
+if ! grep -q "$LLAMA_CPP_DIR" ~/.bashrc; then
+  echo "export PATH=$LLAMA_CPP_DIR:":\$PATH" >> ~/.bashrc
+  log 3 "✅ llama-cpp-python přidán do PATH."
+fi
+
+export PATH=$LLAMA_CPP_DIR:$PATH
+log 3 "✅ llama-cpp-python nainstalován do $LLAMA_CPP_DIR."
 
 # 4. Stáhnutí modelu
 log 4 "Stahuji TinyLlama model (~400MB)..."
@@ -89,6 +128,25 @@ curl -L "$MODEL_URL" -o "$MODEL_DIR/$MODEL_NAME"
 log 4 "✅ Model uložen do $MODEL_DIR/$MODEL_NAME"
 
 # 5. Spuštění LLM serveru
+log 5 "Kontroluji, zda jsou všechny potřebné moduly nainstalovány..."
+REQUIRED_MODULES=("uvicorn" "llama-cpp-python")
+MISSING_MODULES=()
+
+for MODULE in "${REQUIRED_MODULES[@]}"; do
+  if ! $PYTHON_BIN -m pip show "$MODULE" > /dev/null 2>&1; then
+    MISSING_MODULES+=("$MODULE")
+  fi
+done
+
+if [ ${#MISSING_MODULES[@]} -ne 0 ]; then
+  log 5 "Chybí následující moduly: ${MISSING_MODULES[*]}"
+  log 5 "Instaluji chybějící moduly..."
+  for MODULE in "${MISSING_MODULES[@]}"; do
+    $PYTHON_BIN -m pip install "$MODULE"
+  done
+  log 5 "✅ Všechny potřebné moduly byly nainstalovány."
+fi
+
 log 5 "Spouštím llama-cpp-python server..."
 nohup $PYTHON_BIN -m llama_cpp.server \
   --model "$MODEL_DIR/$MODEL_NAME" \
